@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: op-demo-front
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: op-demo-front
+  template:
+    metadata:
+      labels:
+        name: op-demo-front
+    spec:
+      serviceAccountName: op-demo-front
+      containers:
+        - name: op-demo-front
+          # Replace this with the built image name
+          image: REPLACE_IMAGE
+          command:
+          - op-demo-front
+          imagePullPolicy: Always
+          env:
+            - name: WATCH_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPERATOR_NAME
+              value: "op-demo-front"

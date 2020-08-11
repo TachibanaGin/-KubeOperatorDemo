@@ -1,0 +1,7 @@
+apiVersion: front.xjlhcz.com/v1
+kind: Front
+metadata:
+  name: example-front
+spec:
+  # Add fields here
+  size: 3
