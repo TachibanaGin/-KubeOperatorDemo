@@ -1,12 +1,12 @@
 apiVersion: front.xjlhcz.com/v1
 kind: Front
 metadata:
-  name: zzz
+  name: a
 spec:
-  replicas: 3
+  replicas: 2
   image: nginx:alpine
   ports:
     - port: 80
       targetPort: 80
-      nodePort: 30008
+      nodePort: 30005
 

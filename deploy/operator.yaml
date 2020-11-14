@@ -16,7 +16,7 @@ spec:
       containers:
         - name: op-demo-front
           # Replace this with the built image name
-          image: REPLACE_IMAGE
+          image: registry.cn-qingdao.aliyuncs.com/fuck-k8s/operaotr-demo:v3
           command:
           - op-demo-front
           imagePullPolicy: Always

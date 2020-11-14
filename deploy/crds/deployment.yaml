@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: suede
+spec:
+  selector:
+    matchLabels:
+      run: suede
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        run: suede
+    spec:
+      containers:
+      - name: suede
+        image: nginx
+        ports:
+        - name: httpd 
+          containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: suede
+spec:
+  selector:
+    run: suede
+  type: NodePort
+  ports:
+  - name: httpa
+    nodePort: 30030
+    port: 80
+    targetPort: 80
+  - name: httpb
+    nodePort: 30040
+    port: 90
+    targetPort: 80

@@ -1,9 +1,9 @@
 package v1
 
 import (
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	appsv1 "k8s.io/api/apps/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -25,6 +25,7 @@ type FrontStatus struct {
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
 	appsv1.DeploymentStatus `json:",inline"`
+	Status []PodStatus `json:",items"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -51,4 +52,9 @@ type FrontList struct {
 
 func init() {
 	SchemeBuilder.Register(&Front{}, &FrontList{})
+}
+
+type PodStatus struct {
+	PodNames string
+	PodStatus corev1.PodStatus
 }

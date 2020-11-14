@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -100,12 +101,13 @@ func (r *ReconcileFront) Reconcile(request reconcile.Request) (reconcile.Result,
 		return reconcile.Result{}, err
 	}
 
-	//创建front、deployment、service
-	dep := &appsv1.Deployment{}
-	err = r.client.Get(context.TODO(),types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace},dep)
 	//qweLogger := log.WithValues("zzz")
 	//qweLogger.Info("zzz")
-	if err != nil {
+
+	//创建 or 更新 deployment、service
+	dep := &appsv1.Deployment{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace},dep)
+	if err != nil && errors.IsNotFound(err) {
 		dep := newDepForCR(instance)
 		reqLogger.Info("Creating a new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
 		err = r.client.Create(context.TODO(), dep)
@@ -113,12 +115,83 @@ func (r *ReconcileFront) Reconcile(request reconcile.Request) (reconcile.Result,
 			reqLogger.Error(err, "Failed to create new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
 			return reconcile.Result{}, err
 		}
+		//instance.Status.DeploymentStatus = dep.Status
+		//err := r.client.Status().Update(context.TODO(), instance)
+		//if err != nil {
+		//	reqLogger.Error(err, "Failed to update Front status")
+		//	return reconcile.Result{}, err
+		//}
+	}else {
+		depNew := newDepForCR(instance)
+		if !reflect.DeepEqual(dep.Spec, depNew.Spec) {
+			reqLogger.Info("Updating a Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
+			err := r.client.Update(context.TODO(), depNew);
+			if err != nil {
+				reqLogger.Error(err, "Failed to update Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
+				return reconcile.Result{}, err
+			}
+		}
+	}
+	svc := &corev1.Service{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace},svc)
+	if err != nil && errors.IsNotFound(err) {
 		svc := newSvcForCR(instance)
+		reqLogger.Info("Create a new Service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
 		if err := r.client.Create(context.TODO(), svc); err != nil {
+			reqLogger.Error(err, "Failed to create new Service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
 			return reconcile.Result{}, err
 		}
-		return reconcile.Result{}, nil
+	}else {
+		svcNew := newSvcForCR(instance)
+		if !reflect.DeepEqual(svc.Spec.Ports, svcNew.Spec.Ports) {
+			svc.Spec.Ports = svcNew.Spec.Ports
+			reqLogger.Info("Updating a Service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
+			if err := r.client.Update(context.TODO(), svc); err != nil {
+				reqLogger.Error(err, "Failed to update Service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
+				return reconcile.Result{}, err
+			}
+		}
 	}
+
+	// Update status
+	// Update the Memcached status with the pod names
+	// List the pods for this memcached's deployment
+	podList := &corev1.PodList{}
+	listOpts := []client.ListOption{
+		client.InNamespace(instance.Namespace),
+		client.MatchingLabels(labelsForFront(instance.Name)),
+	}
+	if err = r.client.List(context.TODO(), podList, listOpts...); err != nil {
+		reqLogger.Error(err, "Failed to list pods", "Front.Namespace", instance.Namespace, "Front.Name", instance.Name)
+		return reconcile.Result{}, err
+	}
+	podstatus := getPodNamesAndStatus(podList.Items)
+
+	// Update status.Nodes if needed
+	if !reflect.DeepEqual(podstatus, instance.Status) {
+		instance.Status.Status = podstatus
+		reqLogger.Info("Updating a Front Status", "Front.Namespace", svc.Namespace, "Front.Name", svc.Name)
+		err := r.client.Status().Update(context.TODO(), instance)
+		if err != nil {
+			reqLogger.Error(err, "Failed to update instance status")
+			return reconcile.Result{}, err
+		}
+	}
+	//if !reflect.DeepEqual(dep.Status, instance.Status.DeploymentStatus) {
+	//	instance.Status.DeploymentStatus = dep.Status
+	//	reqLogger.Info("Updating a status", "front.Namespace", instance.Namespace, "front.Name", instance.Name)
+	//	err := r.client.Status().Update(context.TODO(), instance)
+	//	if err != nil {
+	//		reqLogger.Error(err, "Failed to update Front status")
+	//		return reconcile.Result{}, err
+	//	}
+	//	patch := client.MergeFrom(instance)
+	//	err = r.client.Status().Patch(context.TODO(), instance, patch)
+	//	if err != nil {
+	//		reqLogger.Error(err, "Failed to update Front status")
+	//		return reconcile.Result{}, err
+	//	}
+	//}
 
 	return reconcile.Result{}, nil
 }
@@ -160,7 +233,7 @@ func newDepForCR(cr *frontv1.Front) *appsv1.Deployment {
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  cr.Name + "pod",
+							Name:  cr.Name + "-" + "pod",
 							Image: cr.Spec.Image,
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							Ports: containerPorts,
@@ -204,3 +277,27 @@ func newSvcForCR(cr *frontv1.Front) *corev1.Service {
 }
 
 func int32Ptr(i int32) *int32 { return &i }
+
+func labelsForFront(name string) map[string]string {
+	return map[string]string{"app": name}
+}
+
+// getPodNames returns the pod names of the array of pods passed in
+func getPodNamesAndStatus(pods []corev1.Pod) []frontv1.PodStatus {
+
+	frontStatus := []frontv1.PodStatus{}
+	getstatus := frontv1.PodStatus{}
+	for _, pod := range pods {
+		getstatus.PodNames = pod.Name
+		//getstatus.PodStatus = pod.Status
+		frontStatus = append(frontStatus,getstatus)
+		//frontStatus.podNames = append(frontStatus.podNames, pod.Name)
+		//podStatus = append(podStatus, pod.Status)
+	}
+	return frontStatus
+}
+
+type PodStatus struct {
+	podNames string
+	podStatus corev1.PodStatus
+}
